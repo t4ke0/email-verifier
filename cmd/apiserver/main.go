@@ -33,20 +33,32 @@ func GetEmailVerification(w http.ResponseWriter, r *http.Request, ps httprouter.
 
 }
 
+type BulkVerificationResponse struct {
+	Results interface{} `json:"results"`
+	Error   string      `json:"error"`
+}
+
 func GetEmailsVerification(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	emailsStr := r.URL.Query().Get("emails")
-	verifier := emailVerifier.NewVerifier()
+	verifier := emailVerifier.NewVerifier().EnableSMTPCheck()
 	emails := strings.Split(emailsStr, ",")
 
+	w.Header().Set("Content-Type", "application/json")
 	results, err := verifier.VerifyBulk(emails...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if err := json.NewEncoder(w).Encode(BulkVerificationResponse{
+			Results: results,
+			Error:   err.Error(),
+		}); err != nil {
+			_, _ = fmt.Fprintf(w, "failed to write JSON to the http writer %v", err)
+		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(results); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(BulkVerificationResponse{
+		Results: results,
+	}); err != nil {
+		_, _ = fmt.Fprintf(w, "failed to write JSON to the http writer %v", err)
 		return
 	}
 }
