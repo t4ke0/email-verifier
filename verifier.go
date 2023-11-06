@@ -1,8 +1,10 @@
 package emailverifier
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -51,6 +53,52 @@ func NewVerifier() *Verifier {
 		catchAllCheckEnabled: true,
 		apiVerifiers:         map[string]smtpAPIVerifier{},
 	}
+}
+
+// Verify performs address, misc, mx and smtp checks for multiple emails
+func (v *Verifier) VerifyBulk(emails ...string) (out []*Result, err error) {
+	wg := &sync.WaitGroup{}
+
+	resultChan := make(chan *Result)
+	errChan := make(chan error)
+	done := make(chan struct{})
+
+	var errs []error
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				close(errChan)
+				close(resultChan)
+				return
+			case v := <-resultChan:
+				out = append(out, v)
+
+			case err := <-errChan:
+				errs = append(errs, err)
+			}
+		}
+	}()
+
+	for _, email := range emails {
+		wg.Add(1)
+		go func(em string) {
+			defer wg.Done()
+			r, err := v.Verify(em)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			resultChan <- r
+		}(email)
+	}
+
+	wg.Wait()
+	done <- struct{}{}
+
+	err = errors.Join(errs...)
+	return
 }
 
 // Verify performs address, misc, mx and smtp checks
