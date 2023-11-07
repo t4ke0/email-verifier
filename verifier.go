@@ -55,6 +55,38 @@ func NewVerifier() *Verifier {
 	}
 }
 
+type BulkGenerator struct {
+	Result *Result
+	Error  error
+}
+
+func (v *Verifier) VerifyBulkGenerator(emails ...string) <-chan BulkGenerator {
+	out := make(chan BulkGenerator)
+	go func() {
+		defer close(out)
+		wg := &sync.WaitGroup{}
+		for _, email := range emails {
+			wg.Add(1)
+			go func(em string) {
+				defer wg.Done()
+				result, err := v.Verify(em)
+				if err != nil {
+					out <- BulkGenerator{
+						Error: err,
+					}
+					return
+				}
+				out <- BulkGenerator{
+					Result: result,
+				}
+			}(email)
+		}
+		wg.Wait()
+	}()
+
+	return out
+}
+
 // Verify performs address, misc, mx and smtp checks for multiple emails
 func (v *Verifier) VerifyBulk(emails ...string) (out []*Result, err error) {
 	wg := &sync.WaitGroup{}
