@@ -76,6 +76,21 @@ func (v *Verifier) VerifyBulkGenerator(emails ...string) <-chan BulkGenerator {
 					}
 					return
 				}
+				if result.SMTP != nil {
+					if result.SMTP.CatchAll {
+						ok, err := OneDriveValidate(em)
+						if err != nil {
+							out <- BulkGenerator{
+								Error: err,
+							}
+							return
+						}
+						if ok {
+							result.SMTP.CatchAll = false
+							result.Reachable = "true"
+						}
+					}
+				}
 				out <- BulkGenerator{
 					Result: result,
 				}
