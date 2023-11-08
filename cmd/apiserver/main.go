@@ -77,6 +77,10 @@ type BulkJob struct {
 	JobStatus      string    `json:"job_status"`
 	TotalRecords   int       `json:"total_records"`
 	TotalProcessed int       `json:"total_processed"`
+	TotalSafe      int       `json:"total_deliverable"`
+	TotalInvalid   int       `json:"total_invalid"`
+	TotalRisky     int       `json:"total_risky"`
+	TotalUnknown   int       `json:"total_unknown"`
 	CreatedAt      time.Time `json:"created_at"`
 	FinishedAt     time.Time `json:"finished_at"`
 }
@@ -137,6 +141,7 @@ func StartBulkValidationJob(w http.ResponseWriter, r *http.Request, _ httprouter
 		var brsp BulkVerificationResponse
 		var results []*emailVerifier.Result
 		for c := range verifier.VerifyBulkGenerator(req.Emails...) {
+
 			mtx.Lock()
 			bulkJobs[jobId].TotalProcessed++
 			mtx.Unlock()
@@ -144,6 +149,42 @@ func StartBulkValidationJob(w http.ResponseWriter, r *http.Request, _ httprouter
 				brsp.Errors = append(brsp.Errors, c.Error.Error())
 				continue
 			}
+
+			var (
+				totalSafe    int
+				totalRisky   int
+				totalUnknown int
+				totalInvalid int
+			)
+
+			if c.Result.SMTP != nil {
+				if c.Result.SMTP.Deliverable {
+					totalSafe++
+				}
+			}
+
+			if !c.Result.Syntax.Valid || c.Result.Reachable == "no" {
+				totalInvalid++
+			}
+
+			if c.Result.SMTP != nil {
+				if !c.Result.SMTP.CatchAll && c.Result.Reachable == "unknown" || c.Result.Reachable == "false" {
+					totalUnknown++
+				}
+			}
+
+			if c.Result.SMTP != nil {
+				if c.Result.SMTP.CatchAll && c.Result.Reachable == "unknown" {
+					totalRisky++
+				}
+			}
+
+			mtx.Lock()
+			bulkJobs[jobId].TotalSafe += totalSafe
+			bulkJobs[jobId].TotalInvalid += totalInvalid
+			bulkJobs[jobId].TotalRisky += totalRisky
+			bulkJobs[jobId].TotalUnknown += totalUnknown
+			mtx.Unlock()
 
 			results = append(results, c.Result)
 		}
