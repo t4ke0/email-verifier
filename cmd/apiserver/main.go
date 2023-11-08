@@ -157,10 +157,8 @@ func StartBulkValidationJob(w http.ResponseWriter, r *http.Request, _ httprouter
 				totalInvalid int
 			)
 
-			if c.Result.SMTP != nil {
-				if c.Result.SMTP.Deliverable {
-					totalSafe++
-				}
+			if c.Result.Reachable == "true" {
+				totalSafe++
 			}
 
 			if !c.Result.Syntax.Valid || c.Result.Reachable == "no" {
